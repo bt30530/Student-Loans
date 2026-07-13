@@ -142,12 +142,17 @@
   /* ————— table ————— */
   .tablewrap{max-height:380px; overflow:auto; border:1px solid var(--line); border-radius:12px;}
   table{width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:12.5px;
-    font-variant-numeric:tabular-nums;}
+    font-variant-numeric:tabular-nums; table-layout:fixed;}
   thead th{position:sticky; top:0; z-index:2; background:#111C29; color:#AEBDCB; font-family:'Inter',sans-serif;
     font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:600;
-    text-align:right; padding:10px 12px; white-space:nowrap; border-bottom:1px solid var(--line2);}
+    text-align:right; padding:10px 10px; white-space:normal; line-height:1.35; vertical-align:bottom;
+    border-bottom:1px solid var(--line2);}
   thead th:first-child{text-align:left;}
-  tbody td{padding:7px 12px; text-align:right; border-bottom:1px solid rgba(255,255,255,.05); white-space:nowrap; color:#CBD7E1;}
+  th.moneycol,td.moneycol{width:104px;}
+  th.yearcol,td.yearcol{width:150px;}
+  th.pctcol,td.pctcol{width:80px;}
+  tbody td{padding:7px 10px; text-align:right; border-bottom:1px solid rgba(255,255,255,.05); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; color:#CBD7E1;}
   tbody td:first-child{text-align:left; color:var(--muted);}
   tbody tr{transition:background .15s ease;}
   tbody tr:hover{background:rgba(47,191,180,.06);}
@@ -180,6 +185,8 @@
     color:#F3C2CB; border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:18px;}
 
   footer{font-size:12px; color:var(--faint); line-height:1.7; max-width:88ch;}
+  .buildstamp{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint);
+    letter-spacing:.03em; margin-bottom:10px;}
 </style>
 </head>
 <body>
@@ -302,12 +309,13 @@
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th>Year</th><th>Salary</th><th>Threshold</th><th>Above threshold</th>
-          <th>Repaid /yr</th><th class="realcol">Repaid /yr (real)</th>
-          <th>≈ /month</th><th class="realcol">≈ /month (real)</th>
-          <th>% of salary</th>
-          <th>Cumulative</th><th class="realcol">Cumulative (real)</th>
-          <th>Balance</th>
+          <th class="yearcol">Year</th>
+          <th class="moneycol">Salary</th><th class="moneycol">Threshold</th><th class="moneycol">Above threshold</th>
+          <th class="moneycol">Repaid /yr</th><th class="moneycol realcol">Repaid /yr (real)</th>
+          <th class="moneycol">≈ /month</th><th class="moneycol realcol">≈ /month (real)</th>
+          <th class="pctcol">% of salary</th>
+          <th class="moneycol">Cumulative</th><th class="moneycol realcol">Cumulative (real)</th>
+          <th class="moneycol">Balance</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -325,6 +333,7 @@
   </section>
 
   <footer class="reveal">
+    <p class="buildstamp">Last built 2026-07-13 21:05 UTC</p>
     <p>A model, not financial advice.  Confirmed 2026/27 Student Finance England rates; the away-outside-London
     minimum maintenance figure is an estimate (~£4,896).  Threshold uprating from April 2027 per announced policy.
     Real-terms figures discount each payment at CPI back to September 2026.  Ignores postgraduate loans, part
@@ -652,13 +661,13 @@ function update() {
     const above = Math.max(0, r.salary - r.threshold);
     const pct = r.salary > 0 ? (r.yearPaid / r.salary) * 100 : 0;
     tr.innerHTML =
-      "<td>Apr " + (r.year - 1) + "\u2013Mar " + r.year + "</td>" +
-      "<td>" + gbp(r.salary) + "</td><td>" + gbp(r.threshold) + "</td><td>" + gbp(above) + "</td>" +
-      "<td class='amber'>" + gbp(r.yearPaid) + "</td><td class='amber realcol'>" + gbp(r.yearPaidReal) + "</td>" +
-      "<td class='amber'>" + gbp(r.yearPaid / 12) + "</td><td class='amber realcol'>" + gbp(r.yearPaidReal / 12) + "</td>" +
-      "<td class='dim'>" + pct.toFixed(1) + "%</td>" +
-      "<td>" + gbp(r.paidNom) + "</td><td class='realcol'>" + gbp(r.paidReal) + "</td>" +
-      "<td>" + (r.balance === 0 ? "cleared" : gbp(r.balance)) + "</td>";
+      "<td class='yearcol'>Apr " + (r.year - 1) + "\u2013Mar " + r.year + "</td>" +
+      "<td class='moneycol'>" + gbp(r.salary) + "</td><td class='moneycol'>" + gbp(r.threshold) + "</td><td class='moneycol'>" + gbp(above) + "</td>" +
+      "<td class='moneycol amber'>" + gbp(r.yearPaid) + "</td><td class='moneycol amber realcol'>" + gbp(r.yearPaidReal) + "</td>" +
+      "<td class='moneycol amber'>" + gbp(r.yearPaid / 12) + "</td><td class='moneycol amber realcol'>" + gbp(r.yearPaidReal / 12) + "</td>" +
+      "<td class='pctcol dim'>" + pct.toFixed(1) + "%</td>" +
+      "<td class='moneycol'>" + gbp(r.paidNom) + "</td><td class='moneycol realcol'>" + gbp(r.paidReal) + "</td>" +
+      "<td class='moneycol'>" + (r.balance === 0 ? "cleared" : gbp(r.balance)) + "</td>";
     tbody.appendChild(tr);
     if (r.balance === 0) break;
   }
