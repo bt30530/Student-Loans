@@ -451,6 +451,12 @@ function simulate(p, withOverpay) {
         principal: Math.round(principal), interest: Math.round(cumInterest), balance: Math.round(bal),
       });
     }
+    if (m === aprilStart - 1 && m % 12 !== 11) {
+      yearRowsStudy.push({
+        label: "Repay start",
+        principal: Math.round(principal), interest: Math.round(cumInterest), balance: Math.round(bal),
+      });
+    }
     if (m >= aprilStart && (m - aprilStart) % 12 === 11) {
       repayYears.push({
         year: calYear(m), balance: Math.round(bal),
