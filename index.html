@@ -271,6 +271,14 @@
         <button class="addbtn" id="addLump" type="button">+ Add lump sum</button>
         <p class="hint" id="lumpHint">Years count from repayment start.  Lumps apply in April.</p></div>
     </div>
+
+    <div class="panel">
+      <h3>Clear vs invest</h3>
+      <div class="field"><label for="investReal" id="investRealLbl">Investment real growth: 0.0%/yr (CPI-tracking)</label>
+        <input type="range" id="investReal" min="-3" max="8" step="0.25" value="0"></div>
+      <p class="hint">If you had the balance in cash at graduation, this models investing it instead of clearing the
+        loan — growth is <em>above</em> CPI, so 0% means it merely tracks inflation.</p>
+    </div>
   </div>
 
   <section class="block reveal">
@@ -322,6 +330,16 @@
     </div>
   </section>
 
+  <section class="block reveal">
+    <h2>Clear it now, or invest instead?</h2>
+    <p class="sub" id="civSub">If you had the balance in cash the moment repayments start, is it better spent
+      clearing the loan outright, or invested and left to run its normal course?</p>
+    <div class="stats" id="civStats"></div>
+    <div class="chartbox" style="height:260px"><canvas id="civChart" role="img"
+      aria-label="Line chart comparing the invested lump sum's real value against cumulative real repayments"></canvas></div>
+    <p class="vnote" id="civNote" style="color:var(--muted); margin-top:14px;"></p>
+  </section>
+
   <section class="verdict reveal">
     <h2>The comparison that matters</h2>
     <div class="be">
@@ -333,7 +351,7 @@
   </section>
 
   <footer class="reveal">
-    <p class="buildstamp">Last built 2026-07-13 21:12 UTC</p>
+    <p class="buildstamp">Last built 2026-07-13 20:56 UTC</p>
     <p>A model, not financial advice.  Confirmed 2026/27 Student Finance England rates; the away-outside-London
     minimum maintenance figure is an estimate (~£4,896).  Threshold uprating from April 2027 per announced policy.
     Real-terms figures discount each payment at CPI back to September 2026.  Ignores postgraduate loans, part
@@ -366,7 +384,7 @@ const DEFAULTS = {
   startSalary: 32000, annualRise: 4,
   steps: [{ year: 4, pct: 15 }],
   extraMonthly: 0, lumps: [],
-  studyView: "term",
+  studyView: "term", investReal: 0,
 };
 function cloneDefaults() { return JSON.parse(JSON.stringify(DEFAULTS)); }
 function loadSaved() {
@@ -624,6 +642,42 @@ function drawCharts(base, over, hasOverpay) {
   });
 }
 
+let civChart = null;
+function drawCivChart(active, P_real, investRealFrac, repayStartYear) {
+  if (!chartsAvailable()) return;
+  const rows = active.repayYears;
+  const years = [repayStartYear].concat(rows.map((r) => r.year));
+  const potLine = years.map((y) => P_real * Math.pow(1 + investRealFrac, y - repayStartYear));
+  let cum = 0;
+  const cumLine = [0].concat(rows.map((r) => {
+    cum = r.paidReal;
+    return cum;
+  }));
+  // stop the cumulative line once the loan is actually cleared
+  let cutIdx = cumLine.length;
+  if (active.payoffMonth !== null) {
+    const clearYear = calYear(active.payoffMonth);
+    const idx = years.findIndex((y) => y >= clearYear);
+    if (idx >= 0) cutIdx = idx + 1;
+  }
+  if (civChart) civChart.destroy();
+  const ctx = document.getElementById("civChart").getContext("2d");
+  civChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: years,
+      datasets: [
+        { label: "Invested lump sum (real)", data: potLine,
+          borderColor: TEAL, backgroundColor: gradient(ctx, TEAL, 0.16, 0.0),
+          fill: true, pointRadius: 0, borderWidth: 2, tension: .15 },
+        { label: "Cumulative repaid instead (real)", data: cumLine.slice(0, cutIdx),
+          borderColor: AMBER, pointRadius: 0, borderWidth: 2, tension: .15 },
+      ],
+    },
+    options: baseOpts(),
+  });
+}
+
 // ————— master update —————
 function update() {
   const hasOverpay = S.extraMonthly > 0 || S.lumps.length > 0;
@@ -688,6 +742,50 @@ function update() {
     beEl.textContent = "No starting salary under \u00A3300k clears this loan inside 40 years on these assumptions — salary growth is being outrun by RPI on the balance.";
   }
 
+  // ————— Clear vs invest —————
+  document.getElementById("investRealLbl").textContent =
+    "Investment real growth: " + S.investReal.toFixed(2) + "%/yr" + (S.investReal === 0 ? " (CPI-tracking)" : "");
+  {
+    const active = hasOverpay ? over : base;
+    const P_nominal = base.balanceAtRepayStart; // balance owed at Apr repayStartYear, nominal £ at that date
+    const P_real = P_nominal / Math.pow(1 + (S.cpi / 100), repayStartYear - 2026); // Sept-2026 real equivalent
+    const endMonth = active.payoffMonth === null ? active.aprilStart + WRITE_OFF_MONTHS : active.payoffMonth;
+    const endYear = calYear(endMonth);
+    const yearsHeld = endYear - repayStartYear;
+    const investRealFrac = S.investReal / 100;
+    const potRealAtEnd = P_real * Math.pow(1 + investRealFrac, yearsHeld); // real (Sept-2026) value if grows at investReal ABOVE cpi
+    const potNominalAtEnd = potRealAtEnd * Math.pow(1 + (S.cpi / 100), endYear - 2026);
+    const netAdvantageReal = potRealAtEnd - active.payReal;
+
+    document.getElementById("civSub").textContent =
+      "Balance owed at Apr " + repayStartYear + " is " + gbp(P_nominal) + " (" + gbp(P_real) + " in September 2026 terms).  " +
+      "Compared against your currently modelled repayment path" + (hasOverpay ? " (with overpayments)" : " (mandatory 9% only)") + ".";
+
+    document.getElementById("civStats").innerHTML =
+      "<div class='stat'><div class='k'>Clear now, Apr " + repayStartYear + "</div><div class='v'>" + gbp(P_real) + "</div>" +
+        "<div class='s'>one-off real cost, loan gone</div></div>" +
+      "<div class='stat'><div class='k'>Invested pot at " + (active.payoffMonth === null ? "write-off" : "clearance") + " (" + endYear + ")</div>" +
+        "<div class='v teal'>" + gbp(potRealAtEnd) + "</div><div class='s'>" + gbp(potNominalAtEnd) + " nominal, real terms held</div></div>" +
+      "<div class='stat'><div class='k'>Real repayments made instead</div><div class='v amber'>" + gbp(active.payReal) + "</div>" +
+        "<div class='s'>" + (active.payoffMonth === null ? "then remainder written off" : "loan fully cleared this way") + "</div></div>" +
+      "<div class='stat'><div class='k'>Net advantage of investing</div><div class='v " + (netAdvantageReal >= 0 ? "teal" : "rose") + "'>" +
+        (netAdvantageReal >= 0 ? "+" : "\u2212") + gbp(Math.abs(netAdvantageReal)) + "</div>" +
+        "<div class='s'>real terms, vs clearing outright</div></div>";
+
+    const beNote = breakEven
+      ? (S.startSalary >= breakEven
+          ? " Your current salary path clears the loan without write-off help, so this margin is doing real work — check it holds if you assume a lower investment return."
+          : " Your current salary path rides to write-off, which is most of why investing wins here — the debt is being eroded for you either way.")
+      : "";
+    document.getElementById("civNote").innerHTML =
+      (netAdvantageReal >= 0
+        ? "On these assumptions, keeping the cash invested beats clearing the loan by <span class='mono'>" + gbp(Math.abs(netAdvantageReal)) + "</span> in real terms."
+        : "On these assumptions, clearing the loan outright beats investing by <span class='mono'>" + gbp(Math.abs(netAdvantageReal)) + "</span> in real terms.") +
+      beNote + "  This assumes the invested money is genuinely left untouched for decades and the return is realised as assumed — a guaranteed debt payoff carries none of that risk.";
+
+    drawCivChart(active, P_real, investRealFrac, repayStartYear);
+  }
+
   const scen = [{ s: base, name: "Mandatory 9% only" }];
   if (hasOverpay) scen.push({ s: over, name: "With overpayments" });
   document.getElementById("scards").innerHTML = scen.map(({ s, name }) => {
@@ -730,6 +828,7 @@ function syncFormToState() {
   document.getElementById("startSalary").value = S.startSalary;
   document.getElementById("annualRise").value = S.annualRise;
   document.getElementById("extraMonthly").value = S.extraMonthly;
+  document.getElementById("investReal").value = S.investReal;
   document.getElementById("thrCustomWrap").style.display = S.thresholdMode === "custom" ? "" : "none";
 
   const setSeg = (onId, offId, isOn) => {
@@ -756,6 +855,7 @@ function init() {
   bind("thrCustom", "thresholdCustom", true);
   bind("startSalary", "startSalary", true);
   bind("annualRise", "annualRise", true);
+  bind("investReal", "investReal", true);
   document.getElementById("extraMonthly").addEventListener("input", (e) => {
     S.extraMonthly = Math.max(0, +e.target.value || 0); update();
   });
