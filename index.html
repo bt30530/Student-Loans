@@ -139,6 +139,23 @@
   .chartlbl{font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted);
     margin-bottom:8px; font-weight:500;}
 
+  .civcontrol{background:rgba(255,255,255,.03); border:1px solid var(--line); border-radius:12px;
+    padding:14px 18px; margin:16px 0 20px; display:grid; grid-template-columns:auto 1fr; gap:6px 16px; align-items:center;}
+  .civcontrol label{grid-column:1; font-size:11.5px; letter-spacing:.05em; text-transform:none;
+    color:var(--text); font-weight:500; white-space:nowrap;}
+  .civcontrol input[type=range]{grid-column:2; accent-color:var(--teal);}
+  .civcontrol .hint{grid-column:1 / -1; margin-top:6px;}
+  @media (max-width:640px){ .civcontrol{grid-template-columns:1fr;} .civcontrol input[type=range]{grid-column:1;} }
+
+  .civhow{margin-top:20px; padding-top:16px; border-top:1px solid var(--line); font-size:13px; color:var(--muted);}
+  .civhow-h{font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--teal);
+    font-weight:600; margin-bottom:10px;}
+  .civhow p{margin-bottom:8px; line-height:1.6;}
+  .civhow p:last-child{margin-bottom:0;}
+  .civhow strong{color:#D4DEE6; font-weight:600;}
+  .dotc{display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:2px; vertical-align:middle;}
+  .dotc.teal{background:var(--teal);} .dotc.amber{background:var(--amber);}
+
   /* ————— table ————— */
   .tablewrap{max-height:380px; overflow:auto; border:1px solid var(--line); border-radius:12px;}
   table{width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:12.5px;
@@ -271,14 +288,6 @@
         <button class="addbtn" id="addLump" type="button">+ Add lump sum</button>
         <p class="hint" id="lumpHint">Years count from repayment start.  Lumps apply in April.</p></div>
     </div>
-
-    <div class="panel">
-      <h3>Clear vs invest</h3>
-      <div class="field"><label for="investReal" id="investRealLbl">Investment real growth: 0.0%/yr (CPI-tracking)</label>
-        <input type="range" id="investReal" min="-3" max="8" step="0.25" value="0"></div>
-      <p class="hint">If you had the balance in cash at graduation, this models investing it instead of clearing the
-        loan — growth is <em>above</em> CPI, so 0% means it merely tracks inflation.</p>
-    </div>
   </div>
 
   <section class="block reveal">
@@ -311,6 +320,19 @@
   </section>
 
   <section class="block reveal">
+    <div class="blockhead">
+      <div><h2>Earnings vs debt over time</h2>
+        <p class="sub">Salary shown nominal and in September 2026 real terms, mandatory-repayments-only path.</p></div>
+      <div class="seg" style="max-width:190px" role="group" aria-label="Bar series">
+        <button id="earnBalBtn" type="button" class="on">Balance</button>
+        <button id="earnPctBtn" type="button">% of salary</button>
+      </div>
+    </div>
+    <div class="chartbox"><canvas id="earnChart" role="img"
+      aria-label="Chart of salary nominal and real over time with bars for outstanding balance or percentage of salary repaid"></canvas></div>
+  </section>
+
+  <section class="block reveal">
     <h2>What the 9% means, year by year</h2>
     <p class="sub">Mandatory repayments only (overpayments excluded).  Repayment years run April–March.
       Real columns are discounted to September 2026 purchasing power at the CPI rate set above.</p>
@@ -331,13 +353,38 @@
   </section>
 
   <section class="block reveal">
-    <h2>Clear it now, or invest instead?</h2>
-    <p class="sub" id="civSub">If you had the balance in cash the moment repayments start, is it better spent
-      clearing the loan outright, or invested and left to run its normal course?</p>
+    <div class="blockhead">
+      <div><h2>Clear it now, or invest instead?</h2>
+        <p class="sub" id="civSub">If you had the balance in cash the moment repayments start, is it better spent
+          clearing the loan outright, or invested and left to run its normal course?</p></div>
+    </div>
+    <div class="civcontrol">
+      <label for="investReal" id="investRealLbl">Investment real growth: 0.0%/yr (CPI-tracking)</label>
+      <input type="range" id="investReal" min="-3" max="8" step="0.25" value="0">
+      <p class="hint">Growth is <em>above</em> CPI, so 0% means the pot merely tracks inflation — a pessimistic,
+        floor-case assumption for what cash left invested would do.</p>
+    </div>
     <div class="stats" id="civStats"></div>
     <div class="chartbox" style="height:260px"><canvas id="civChart" role="img"
       aria-label="Line chart comparing the invested lump sum's real value against cumulative real repayments"></canvas></div>
     <p class="vnote" id="civNote" style="color:var(--muted); margin-top:14px;"></p>
+    <div class="civhow">
+      <div class="civhow-h">How to read this</div>
+      <p><strong>The chart</strong> plots two lines in September 2026 purchasing power.  The <span class="dotc teal"></span><strong>teal
+        line</strong> is the lump sum sitting invested — flat if growth is set to 0%, rising if you push the slider up, falling if you
+        push it negative.  The <span class="dotc amber"></span><strong>amber line</strong> is what you'd have paid in mandatory
+        repayments up to that point instead, and it stops the moment the loan is actually cleared (if it clears at all).
+        If the amber line stays below the teal line throughout, investing wins; if it climbs past it, clearing outright would have
+        been cheaper from that point on.</p>
+      <p><strong>The four stats:</strong></p>
+      <p>1. <strong>Clear now</strong> — the one-off real cost of paying off the balance the moment repayments start.  Simple: spend it, done.</p>
+      <p>2. <strong>Invested pot</strong> — what that same money would be worth, in real terms, at the point the loan is either cleared
+        or written off — grown at the rate on the slider above.</p>
+      <p>3. <strong>Real repayments made instead</strong> — the real cost of the mandatory 9% repayments you'd actually make if you kept
+        the cash invested rather than clearing the debt.</p>
+      <p>4. <strong>Net advantage of investing</strong> — stat 2 minus stat 3.  Positive (teal) means keeping the cash invested comes out
+        ahead; negative (rose) means clearing the loan outright would have left you better off.</p>
+    </div>
   </section>
 
   <section class="verdict reveal">
@@ -351,7 +398,7 @@
   </section>
 
   <footer class="reveal">
-    <p class="buildstamp">Last built 2026-07-13 20:56 UTC</p>
+    <p class="buildstamp">Last built 2026-07-14 14:19 UTC</p>
     <p>A model, not financial advice.  Confirmed 2026/27 Student Finance England rates; the away-outside-London
     minimum maintenance figure is an estimate (~£4,896).  Threshold uprating from April 2027 per announced policy.
     Real-terms figures discount each payment at CPI back to September 2026.  Ignores postgraduate loans, part
@@ -384,7 +431,7 @@ const DEFAULTS = {
   startSalary: 32000, annualRise: 4,
   steps: [{ year: 4, pct: 15 }],
   extraMonthly: 0, lumps: [],
-  studyView: "term", investReal: 0,
+  studyView: "term", investReal: 0, earnMode: "balance",
 };
 function cloneDefaults() { return JSON.parse(JSON.stringify(DEFAULTS)); }
 function loadSaved() {
@@ -678,6 +725,55 @@ function drawCivChart(active, P_real, investRealFrac, repayStartYear) {
   });
 }
 
+let earnChart = null;
+function drawEarnChart(base, cpiPct, mode) {
+  if (!chartsAvailable()) return;
+  const cpi = cpiPct / 100;
+  const years = base.repayYears.map((r) => r.year);
+  const salaryNom = base.repayYears.map((r) => r.salary);
+  const salaryReal = base.repayYears.map((r) => r.salary / Math.pow(1 + cpi, r.year - 2026));
+  const barData = mode === "balance"
+    ? base.repayYears.map((r) => r.balance)
+    : base.repayYears.map((r) => (r.salary > 0 ? (r.yearPaid / r.salary) * 100 : 0));
+
+  if (earnChart) earnChart.destroy();
+  const ctx = document.getElementById("earnChart").getContext("2d");
+  const opts = baseOpts();
+  opts.scales.y.stacked = false;
+  opts.scales.y1 = {
+    position: "right",
+    ticks: {
+      font: { family: "IBM Plex Mono", size: 10 }, color: MUTED,
+      callback: mode === "balance" ? gbpK : (v) => v.toFixed(0) + "%",
+    },
+    grid: { drawOnChartArea: false }, border: { display: false },
+    suggestedMax: mode === "pct" ? 10 : undefined,
+  };
+  opts.plugins.tooltip.callbacks.label = (c) => {
+    if (c.dataset.yAxisID === "y1") {
+      return mode === "balance" ? " " + c.dataset.label + ": " + gbp(c.parsed.y) : " " + c.dataset.label + ": " + c.parsed.y.toFixed(1) + "%";
+    }
+    return " " + c.dataset.label + ": " + gbp(c.parsed.y);
+  };
+
+  earnChart = new Chart(ctx, {
+    data: {
+      labels: years,
+      datasets: [
+        { type: "bar", label: mode === "balance" ? "Outstanding balance" : "% of salary repaid",
+          data: barData, backgroundColor: "rgba(240,163,78,.55)", borderColor: AMBER, borderWidth: 1,
+          borderRadius: 3, yAxisID: "y1", order: 2 },
+        { type: "line", label: "Salary (nominal)", data: salaryNom,
+          borderColor: TEAL, backgroundColor: gradient(ctx, TEAL, 0.14, 0.0),
+          fill: true, pointRadius: 0, borderWidth: 2, tension: .2, yAxisID: "y", order: 1 },
+        { type: "line", label: "Salary (real, 2026 \u00A3)", data: salaryReal,
+          borderColor: MUTED, pointRadius: 0, borderWidth: 2, borderDash: [5, 3], tension: .2, yAxisID: "y", order: 0 },
+      ],
+    },
+    options: opts,
+  });
+}
+
 // ————— master update —————
 function update() {
   const hasOverpay = S.extraMonthly > 0 || S.lumps.length > 0;
@@ -813,6 +909,7 @@ function update() {
   }
 
   drawCharts(base, over, hasOverpay);
+  drawEarnChart(base, S.cpi, S.earnMode);
   persist();
 }
 
@@ -837,6 +934,7 @@ function syncFormToState() {
   };
   setSeg("btnMax", "btnMin", S.maintMode === "max");
   setSeg("viewTerm", "viewYear", S.studyView === "term");
+  setSeg("earnBalBtn", "earnPctBtn", S.earnMode === "balance");
 
   renderAllRows();
 }
@@ -866,6 +964,7 @@ function init() {
   };
   seg("btnMax", "btnMin", "maintMode", "max", "min");
   seg("viewTerm", "viewYear", "studyView", "term", "year");
+  seg("earnBalBtn", "earnPctBtn", "earnMode", "balance", "pct");
   document.getElementById("addStep").addEventListener("click", () => {
     S.steps.push({ year: S.steps.length ? S.steps[S.steps.length - 1].year + 4 : 4, pct: 15 });
     renderAllRows(); update();
