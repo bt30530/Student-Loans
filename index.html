@@ -389,6 +389,9 @@
 
   <section class="verdict reveal">
     <h2>The comparison that matters</h2>
+    <p class="sub" style="color:var(--muted)">Effective interest rate is the single annualised rate that reconciles every drawdown and every
+      repayment on the actual months they happened — not a rough £paid ÷ £borrowed estimate.  A negative rate means
+      the write-off outweighs what you paid: the government ends up subsidising you.</p>
     <div class="be">
       <div class="k">Break-even starting salary</div>
       <p id="beText">—</p>
@@ -398,7 +401,7 @@
   </section>
 
   <footer class="reveal">
-    <p class="buildstamp">Last built 2026-07-14 14:19 UTC</p>
+    <p class="buildstamp">Last built 2026-07-14 14:48 UTC</p>
     <p>A model, not financial advice.  Confirmed 2026/27 Student Finance England rates; the away-outside-London
     minimum maintenance figure is an estimate (~£4,896).  Threshold uprating from April 2027 per announced policy.
     Real-terms figures discount each payment at CPI back to September 2026.  Ignores postgraduate loans, part
@@ -474,14 +477,16 @@ function simulate(p, withOverpay) {
   const aprilStart = p.years * 12 + 7;
   const endMonth = aprilStart + WRITE_OFF_MONTHS;
 
-  let bal = 0, principal = 0, cumInterest = 0;
+  let bal = 0, principal = 0, cumInterest = 0, principalReal = 0;
   let payNom = 0, payReal = 0, payoffMonth = null, writtenOff = 0;
   let lastSal = 0, lastThr = 0, yearPaidN = 0, yearPaidR = 0;
   const termRows = [], yearRowsStudy = [], repayYears = [];
+  const cashflows = []; // lender's perspective: negative = drawdown paid out, positive = repayment received
 
   for (let m = 0; m <= endMonth; m++) {
+    let cf = 0;
     const d = draws.get(m);
-    if (d) { bal += d.amt; principal += d.amt; }
+    if (d) { bal += d.amt; principal += d.amt; principalReal += d.amt / Math.pow(1 + cpi, m / 12); cf -= d.amt; }
 
     if (m >= aprilStart) {
       const k = Math.floor((m - aprilStart) / 12);
@@ -506,9 +511,11 @@ function simulate(p, withOverpay) {
         payReal += pay / Math.pow(1 + cpi, m / 12);
         yearPaidN += pay;
         yearPaidR += pay / Math.pow(1 + cpi, m / 12);
+        cf += pay;
         if (bal <= 0.005 && payoffMonth === null) { payoffMonth = m; bal = 0; }
       }
     }
+    cashflows.push(cf);
 
     if (bal > 0) { const i = bal * mRate; bal += i; cumInterest += i; }
 
@@ -545,9 +552,9 @@ function simulate(p, withOverpay) {
 
   const last = termRows[termRows.length - 1] || { interest: 0, balance: 0 };
   return {
-    totalFees, totalMaint, principal,
+    totalFees, totalMaint, principal, principalReal,
     cumInterestAtStart: last.interest, balanceAtRepayStart: last.balance,
-    termRows, yearRowsStudy, repayYears,
+    termRows, yearRowsStudy, repayYears, cashflows,
     payNom, payReal, payoffMonth, writtenOff, aprilStart, totalInterest: cumInterest,
   };
 }
@@ -562,6 +569,39 @@ function findBreakEven(p) {
     if (clears(mid)) hi = mid; else lo = mid;
   }
   return Math.ceil(hi / 100) * 100;
+}
+
+// Solves for the monthly rate i that sets NPV(cashflows, i) = 0 — the loan's
+// implicit money-weighted interest rate, from the lender's cash-flow perspective.
+function npv(cashflows, i) {
+  let total = 0;
+  for (let m = 0; m < cashflows.length; m++) total += cashflows[m] / Math.pow(1 + i, m);
+  return total;
+}
+function solveIRR(cashflows) {
+  let lo = -0.05, hi = 0.05; // monthly bounds: roughly -46%/yr to +80%/yr, expanded below if needed
+  let fLo = npv(cashflows, lo), fHi = npv(cashflows, hi);
+  let tries = 0;
+  while (fLo * fHi > 0 && tries < 12) {
+    lo -= 0.01; hi += 0.01;
+    fLo = npv(cashflows, lo); fHi = npv(cashflows, hi);
+    tries++;
+  }
+  if (fLo * fHi > 0) return null; // no sign change found — no meaningful solution
+  for (let iter = 0; iter < 80; iter++) {
+    const mid = (lo + hi) / 2;
+    const fMid = npv(cashflows, mid);
+    if (Math.abs(fMid) < 0.01) return mid;
+    if ((fMid > 0) === (fLo > 0)) { lo = mid; fLo = fMid; } else { hi = mid; }
+  }
+  return (lo + hi) / 2;
+}
+function effectiveRates(cashflows, cpiPct) {
+  const iMonthly = solveIRR(cashflows);
+  if (iMonthly === null) return { nominal: null, real: null };
+  const nominal = Math.pow(1 + iMonthly, 12) - 1;
+  const real = (1 + nominal) / (1 + cpiPct / 100) - 1;
+  return { nominal, real };
 }
 
 // ————— dynamic input rows —————
@@ -885,14 +925,21 @@ function update() {
   const scen = [{ s: base, name: "Mandatory 9% only" }];
   if (hasOverpay) scen.push({ s: over, name: "With overpayments" });
   document.getElementById("scards").innerHTML = scen.map(({ s, name }) => {
+    const rates = effectiveRates(s.cashflows, S.cpi);
     let rows =
-      "<div class='srow'><span>Total borrowed</span><span class='mono'>" + gbp(base.principal) + "</span></div>" +
+      "<div class='srow'><span>Total borrowed (nominal, at drawdown)</span><span class='mono'>" + gbp(base.principal) + "</span></div>" +
+      "<div class='srow'><span>Total borrowed (real, 2026 \u00A3)</span><span class='mono'>" + gbp(base.principalReal) + "</span></div>" +
       "<div class='srow'><span>Outcome</span><span class='mono'>" + payoffLabel(s) + "</span></div>" +
       "<div class='srow'><span>Total paid (nominal)</span><span class='mono'>" + gbp(s.payNom) + "</span></div>" +
       "<div class='srow'><span>Total paid (real, 2026 \u00A3)</span><span class='mono'>" + gbp(s.payReal) + "</span></div>" +
       "<div class='srow'><span>Interest incurred</span><span class='mono'>" + gbp(s.totalInterest) + "</span></div>";
     if (s.payoffMonth === null)
       rows += "<div class='srow'><span>Written off</span><span class='mono'>" + gbp(s.writtenOff) + "</span></div>";
+    rows += "<div class='srow' style='margin-top:6px; padding-top:9px; border-top:1px solid rgba(255,255,255,.08)'>" +
+      "<span>Effective interest rate (nominal)</span><span class='mono'>" +
+      (rates.nominal === null ? "n/a" : (rates.nominal >= 0 ? "+" : "\u2212") + Math.abs(rates.nominal * 100).toFixed(2) + "%") + "</span></div>" +
+      "<div class='srow'><span>Effective interest rate (real, above CPI)</span><span class='mono'>" +
+      (rates.real === null ? "n/a" : (rates.real >= 0 ? "+" : "\u2212") + Math.abs(rates.real * 100).toFixed(2) + "%") + "</span></div>";
     return "<div class='scard'><div class='k'>" + name + "</div><div style='margin-top:9px'>" + rows + "</div></div>";
   }).join("");
 
