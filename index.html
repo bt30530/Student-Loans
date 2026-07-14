@@ -174,6 +174,7 @@
   tbody tr{transition:background .15s ease;}
   tbody tr:hover{background:rgba(47,191,180,.06);}
   td.amber{color:var(--amber);} td.dim{color:var(--faint);}
+  td.step{color:var(--teal); font-weight:600;}
   tr.cleared td{color:var(--teal); font-weight:600; background:rgba(47,191,180,.08);}
 
   /* ————— verdict ————— */
@@ -332,18 +333,19 @@
 
   <section class="block reveal">
     <div class="blockhead">
-      <div><h2>What the 9% means, year by year</h2>
-        <p class="sub" id="tableSub">Mandatory repayments only (overpayments excluded).  Repayment years run April–March.</p></div>
+      <h2>What the 9% means, year by year</h2>
       <div class="seg" style="max-width:180px" role="group" aria-label="Nominal or real terms">
         <button id="tblNomBtn" type="button" class="on">Nominal</button>
         <button id="tblRealBtn" type="button">Real (2026 £)</button>
       </div>
     </div>
+    <p class="sub" id="tableSub">Mandatory repayments only (overpayments excluded).  Repayment years run April–March.</p>
     <div class="tablewrap">
       <table>
         <thead><tr>
           <th class="yearcol">Year</th>
           <th class="moneycol" id="thSalary">Salary</th>
+          <th class="pctcol">Rise %</th>
           <th class="moneycol" id="thThreshold">Threshold</th>
           <th class="moneycol" id="thAbove">Above threshold</th>
           <th class="moneycol" id="thRepaid">Repaid /yr</th>
@@ -406,7 +408,7 @@
   </section>
 
   <footer class="reveal">
-    <p class="buildstamp">Last built 2026-07-14 15:00 UTC</p>
+    <p class="buildstamp">Last built 2026-07-14 15:09 UTC</p>
     <p>A model, not financial advice.  Confirmed 2026/27 Student Finance England rates; the away-outside-London
     minimum maintenance figure is an estimate (~£4,896).  Threshold uprating from April 2027 per announced policy.
     Real-terms figures discount each payment at CPI back to September 2026.  Ignores postgraduate loans, part
@@ -864,6 +866,7 @@ function update() {
 
   const tbody = document.getElementById("tbody");
   tbody.innerHTML = "";
+  let prevSalary = S.startSalary;
   for (const r of base.repayYears) {
     const tr = document.createElement("tr");
     if (r.balance === 0) tr.className = "cleared";
@@ -878,9 +881,16 @@ function update() {
     const repaidMonth = repaidYr / 12;
     const cumulative = isReal ? r.paidReal : r.paidNom;
     const pct = r.salary > 0 ? (r.yearPaid / r.salary) * 100 : 0; // ratio — identical nominal or real
+    // Rise % is always on the nominal salary (what was actually configured), regardless of table mode —
+    // a step change is a step change whether or not you're viewing the rest of the row in real terms.
+    const riseRaw = prevSalary > 0 ? ((r.salary / prevSalary) - 1) * 100 : 0;
+    const isStep = riseRaw > S.annualRise + 1; // meaningfully above the flat annual rise — flags a step year
+    prevSalary = r.salary;
     tr.innerHTML =
       "<td class='yearcol'>Apr " + (r.year - 1) + "\u2013Mar " + r.year + "</td>" +
-      "<td class='moneycol'>" + gbp(salary) + "</td><td class='moneycol'>" + gbp(threshold) + "</td><td class='moneycol'>" + gbp(above) + "</td>" +
+      "<td class='moneycol'>" + gbp(salary) + "</td>" +
+      "<td class='pctcol" + (isStep ? " step" : " dim") + "'>" + (isStep ? "+" : "") + riseRaw.toFixed(1) + "%</td>" +
+      "<td class='moneycol'>" + gbp(threshold) + "</td><td class='moneycol'>" + gbp(above) + "</td>" +
       "<td class='moneycol amber'>" + gbp(repaidYr) + "</td><td class='moneycol amber'>" + gbp(repaidMonth) + "</td>" +
       "<td class='pctcol dim'>" + pct.toFixed(1) + "%</td>" +
       "<td class='moneycol'>" + gbp(cumulative) + "</td>" +
