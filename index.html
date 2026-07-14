@@ -174,8 +174,6 @@
   tbody tr{transition:background .15s ease;}
   tbody tr:hover{background:rgba(47,191,180,.06);}
   td.amber{color:var(--amber);} td.dim{color:var(--faint);}
-  th.realcol,td.realcol{background:rgba(47,191,180,.05); border-left:1px solid rgba(47,191,180,.18);}
-  thead th.realcol{background:#132A2A; color:#7FD9D0;}
   tr.cleared td{color:var(--teal); font-weight:600; background:rgba(47,191,180,.08);}
 
   /* ————— verdict ————— */
@@ -333,19 +331,26 @@
   </section>
 
   <section class="block reveal">
-    <h2>What the 9% means, year by year</h2>
-    <p class="sub">Mandatory repayments only (overpayments excluded).  Repayment years run April–March.
-      Real columns are discounted to September 2026 purchasing power at the CPI rate set above.</p>
+    <div class="blockhead">
+      <div><h2>What the 9% means, year by year</h2>
+        <p class="sub" id="tableSub">Mandatory repayments only (overpayments excluded).  Repayment years run April–March.</p></div>
+      <div class="seg" style="max-width:180px" role="group" aria-label="Nominal or real terms">
+        <button id="tblNomBtn" type="button" class="on">Nominal</button>
+        <button id="tblRealBtn" type="button">Real (2026 £)</button>
+      </div>
+    </div>
     <div class="tablewrap">
       <table>
         <thead><tr>
           <th class="yearcol">Year</th>
-          <th class="moneycol">Salary</th><th class="moneycol">Threshold</th><th class="moneycol">Above threshold</th>
-          <th class="moneycol">Repaid /yr</th><th class="moneycol realcol">Repaid /yr (real)</th>
-          <th class="moneycol">≈ /month</th><th class="moneycol realcol">≈ /month (real)</th>
+          <th class="moneycol" id="thSalary">Salary</th>
+          <th class="moneycol" id="thThreshold">Threshold</th>
+          <th class="moneycol" id="thAbove">Above threshold</th>
+          <th class="moneycol" id="thRepaid">Repaid /yr</th>
+          <th class="moneycol" id="thMonth">\u2248 /month</th>
           <th class="pctcol">% of salary</th>
-          <th class="moneycol">Cumulative</th><th class="moneycol realcol">Cumulative (real)</th>
-          <th class="moneycol">Balance</th>
+          <th class="moneycol" id="thCum">Cumulative</th>
+          <th class="moneycol" id="thBalance">Balance</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -401,7 +406,7 @@
   </section>
 
   <footer class="reveal">
-    <p class="buildstamp">Last built 2026-07-14 14:48 UTC</p>
+    <p class="buildstamp">Last built 2026-07-14 15:00 UTC</p>
     <p>A model, not financial advice.  Confirmed 2026/27 Student Finance England rates; the away-outside-London
     minimum maintenance figure is an estimate (~£4,896).  Threshold uprating from April 2027 per announced policy.
     Real-terms figures discount each payment at CPI back to September 2026.  Ignores postgraduate loans, part
@@ -434,7 +439,7 @@ const DEFAULTS = {
   startSalary: 32000, annualRise: 4,
   steps: [{ year: 4, pct: 15 }],
   extraMonthly: 0, lumps: [],
-  studyView: "term", investReal: 0, earnMode: "balance",
+  studyView: "term", investReal: 0, earnMode: "balance", tableMode: "nominal",
 };
 function cloneDefaults() { return JSON.parse(JSON.stringify(DEFAULTS)); }
 function loadSaved() {
@@ -842,22 +847,44 @@ function update() {
   document.getElementById("stBalK").textContent = "Balance Apr " + repayStartYear;
   document.getElementById("stBal").textContent = gbp(base.balanceAtRepayStart);
 
-  // table — mandatory only, with % of salary and cumulative repaid
+  // table — mandatory only, toggled between nominal and real (2026 £) terms
+  const isReal = S.tableMode === "real";
+  const cpiF = S.cpi / 100;
+  document.getElementById("tableSub").textContent =
+    "Mandatory repayments only (overpayments excluded).  Repayment years run April–March." +
+    (isReal ? "  Figures discounted to September 2026 purchasing power at the CPI rate set above." : "  Figures in the £ of the year shown.");
+  const setTh = (id, label) => { document.getElementById(id).textContent = label; };
+  setTh("thSalary", isReal ? "Salary (real)" : "Salary");
+  setTh("thThreshold", isReal ? "Threshold (real)" : "Threshold");
+  setTh("thAbove", isReal ? "Above threshold (real)" : "Above threshold");
+  setTh("thRepaid", isReal ? "Repaid /yr (real)" : "Repaid /yr");
+  setTh("thMonth", isReal ? "\u2248 /month (real)" : "\u2248 /month");
+  setTh("thCum", isReal ? "Cumulative (real)" : "Cumulative");
+  setTh("thBalance", isReal ? "Balance (real)" : "Balance");
+
   const tbody = document.getElementById("tbody");
   tbody.innerHTML = "";
   for (const r of base.repayYears) {
     const tr = document.createElement("tr");
     if (r.balance === 0) tr.className = "cleared";
-    const above = Math.max(0, r.salary - r.threshold);
-    const pct = r.salary > 0 ? (r.yearPaid / r.salary) * 100 : 0;
+    const deflate = isReal ? Math.pow(1 + cpiF, r.year - 2026) : 1;
+    // Salary/threshold/balance are point-in-time snapshots — a single year-end deflator is correct.
+    const salary = r.salary / deflate, threshold = r.threshold / deflate;
+    const above = Math.max(0, r.salary - r.threshold) / deflate;
+    const balance = r.balance / deflate;
+    // Repaid/cumulative are sums of monthly flows — use the figures already discounted month-by-month,
+    // not a cruder single year-end factor (the same distinction discussed for the interest-rate calc).
+    const repaidYr = isReal ? r.yearPaidReal : r.yearPaid;
+    const repaidMonth = repaidYr / 12;
+    const cumulative = isReal ? r.paidReal : r.paidNom;
+    const pct = r.salary > 0 ? (r.yearPaid / r.salary) * 100 : 0; // ratio — identical nominal or real
     tr.innerHTML =
       "<td class='yearcol'>Apr " + (r.year - 1) + "\u2013Mar " + r.year + "</td>" +
-      "<td class='moneycol'>" + gbp(r.salary) + "</td><td class='moneycol'>" + gbp(r.threshold) + "</td><td class='moneycol'>" + gbp(above) + "</td>" +
-      "<td class='moneycol amber'>" + gbp(r.yearPaid) + "</td><td class='moneycol amber realcol'>" + gbp(r.yearPaidReal) + "</td>" +
-      "<td class='moneycol amber'>" + gbp(r.yearPaid / 12) + "</td><td class='moneycol amber realcol'>" + gbp(r.yearPaidReal / 12) + "</td>" +
+      "<td class='moneycol'>" + gbp(salary) + "</td><td class='moneycol'>" + gbp(threshold) + "</td><td class='moneycol'>" + gbp(above) + "</td>" +
+      "<td class='moneycol amber'>" + gbp(repaidYr) + "</td><td class='moneycol amber'>" + gbp(repaidMonth) + "</td>" +
       "<td class='pctcol dim'>" + pct.toFixed(1) + "%</td>" +
-      "<td class='moneycol'>" + gbp(r.paidNom) + "</td><td class='moneycol realcol'>" + gbp(r.paidReal) + "</td>" +
-      "<td class='moneycol'>" + (r.balance === 0 ? "cleared" : gbp(r.balance)) + "</td>";
+      "<td class='moneycol'>" + gbp(cumulative) + "</td>" +
+      "<td class='moneycol'>" + (r.balance === 0 ? "cleared" : gbp(balance)) + "</td>";
     tbody.appendChild(tr);
     if (r.balance === 0) break;
   }
@@ -982,6 +1009,7 @@ function syncFormToState() {
   setSeg("btnMax", "btnMin", S.maintMode === "max");
   setSeg("viewTerm", "viewYear", S.studyView === "term");
   setSeg("earnBalBtn", "earnPctBtn", S.earnMode === "balance");
+  setSeg("tblNomBtn", "tblRealBtn", S.tableMode === "nominal");
 
   renderAllRows();
 }
@@ -1012,6 +1040,7 @@ function init() {
   seg("btnMax", "btnMin", "maintMode", "max", "min");
   seg("viewTerm", "viewYear", "studyView", "term", "year");
   seg("earnBalBtn", "earnPctBtn", "earnMode", "balance", "pct");
+  seg("tblNomBtn", "tblRealBtn", "tableMode", "nominal", "real");
   document.getElementById("addStep").addEventListener("click", () => {
     S.steps.push({ year: S.steps.length ? S.steps[S.steps.length - 1].year + 4 : 4, pct: 15 });
     renderAllRows(); update();
