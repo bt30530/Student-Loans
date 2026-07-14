@@ -490,6 +490,22 @@ function simulate(p, withOverpay) {
   const termRows = [], yearRowsStudy = [], repayYears = [];
   const cashflows = []; // lender's perspective: negative = drawdown paid out, positive = repayment received
 
+  // Salary path, year by year: a step change (job move) REPLACES that year's annual rise rather than
+  // stacking on top of it — the step % is assumed to already bake in inflation, so it doesn't compound
+  // with the standard annual rise in the same year.
+  const maxYearK = Math.ceil((endMonth - aprilStart) / 12) + 1;
+  const salByYear = [p.startSalary];
+  for (let k = 1; k <= maxYearK; k++) {
+    const stepsThisYear = p.steps.filter((s) => s.year === k);
+    let sal = salByYear[k - 1];
+    if (stepsThisYear.length) {
+      stepsThisYear.forEach((s) => { sal *= 1 + s.pct / 100; });
+    } else {
+      sal *= 1 + p.annualRise / 100;
+    }
+    salByYear[k] = sal;
+  }
+
   for (let m = 0; m <= endMonth; m++) {
     let cf = 0;
     const d = draws.get(m);
@@ -497,8 +513,7 @@ function simulate(p, withOverpay) {
 
     if (m >= aprilStart) {
       const k = Math.floor((m - aprilStart) / 12);
-      let sal = p.startSalary * Math.pow(1 + p.annualRise / 100, k);
-      p.steps.forEach((s) => { if (k >= s.year) sal *= 1 + s.pct / 100; });
+      const sal = salByYear[k];
       const moy = (m + 8) % 12;
       const thrYear = moy < 3 ? calYear(m) - 1 : calYear(m);
       const thrRate = p.thresholdMode === "custom" ? p.thresholdCustom / 100 : p.rpi / 100;
